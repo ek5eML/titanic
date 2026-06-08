@@ -1,0 +1,24 @@
+============================================================
+2026-06-08 08:10:16
+============================================================
+experiment : baseline
+model      : LogisticRegression
+metric     : accuracy = 0.795706
+time       : 0.04 s
+
+params:
+  C                 : 0.1
+  class_weight      : None
+  dual              : False
+  fit_intercept     : True
+  intercept_scaling : 1
+  l1_ratio          : 0.9
+  max_iter          : 100
+  n_jobs            : None
+  penalty           : deprecated
+  random_state      : None
+  solver            : saga
+  tol               : 0.0001
+  verbose           : 0
+  warm_start        : False
+
