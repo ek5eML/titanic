@@ -1,8 +1,6 @@
 from sklearn.base import BaseEstimator, TransformerMixin
 import pandas as pd
 
-from utils import generate_continuous_feature
-
 
 TITLES_DICT = {
  'Mlle': 'Miss',
@@ -55,6 +53,24 @@ DROP_COLUMNS = [
     'Age', 'Fare',
     'SibSp', 'Parch',
 ]
+
+def generate_continuous_feature(
+    data: pd.DataFrame,
+    base_col_name: str,
+    cat_col_name: str,
+    bins: list[list[float]],
+) -> pd.DataFrame:
+    data = data.copy()
+    
+    for i, (lo, hi) in enumerate(bins):
+        data.loc[(data[base_col_name] > lo) & (data[base_col_name] <= hi), cat_col_name] = i
+
+    data.loc[data[base_col_name] <= bins[0][1], cat_col_name] = 0
+    data.loc[data[base_col_name] > bins[-1][0], cat_col_name] = i
+
+    data[cat_col_name] = data[cat_col_name].astype('int64')
+
+    return data
 
 class FeatureTransformer(BaseEstimator, TransformerMixin):
   def __init__(self, config):
