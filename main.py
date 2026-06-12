@@ -6,6 +6,10 @@ from utils import set_seed, log_run, save_best_model_params
 def fit(config):
   set_seed(config.general.seed)
   trainer = Trainer(config)
+  
+  if config.mode == 'fit':
+    res = trainer.fit_full()
+    
   res = trainer.run_cv()
   
   if config.logging:

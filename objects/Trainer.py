@@ -4,6 +4,7 @@ from sklearn.model_selection import cross_validate, StratifiedKFold
 
 from objects.pipeline_builder import build_pipeline
 from objects.DataLoader import DataLoader
+from objects.dnn.runner import DNNRunner
 
 
 class Trainer:
@@ -11,6 +12,9 @@ class Trainer:
     self.config = config
     
   def run_cv(self, name: str = '', params: dict | None = None):
+    if self.config.training_model == 'DNN':
+      return DNNRunner(self.config).run_cv()
+
     data_loader = DataLoader(self.config)
     train_data = data_loader.load_train()
     X, y = data_loader.split_data(train_data)
@@ -39,5 +43,12 @@ class Trainer:
     }
   
   def fit_full(self, name: str = '', params: dict | None = None):
-    pass
+    data_loader = DataLoader(self.config)
+    train_data = data_loader.load_train()
+    X, y = data_loader.split_data(train_data)
     
+    pipeline = build_pipeline(self.config, name, params)
+    
+    pipeline.fit(X, y)
+    
+    return pipeline
