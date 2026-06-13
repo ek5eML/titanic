@@ -2,15 +2,16 @@ from omegaconf import OmegaConf
 
 config = {
   'general': {
-    'experiment_name': 'baseline',
+    'experiment_name': 'simple_models_with_scaler',
     'seed': 31415,
     'num_classes': 2,
   },
   'paths': {
     'path_to_train_data': './data/train.csv',
     'path_to_test_data': './data/test.csv',
-    'path_to_checkpoints': './checkpoints/${general.experiment_name}',
+    'path_to_checkpoints': './checkpoints',
     'path_to_logs': './logs/${general.experiment_name}',
+    'path_to_submission': './submission.csv',
   },
   'data': {
     'target_col': 'Survived',
@@ -25,21 +26,25 @@ config = {
     'log_reg': {
       'C': 0.1,
       'class_weight': None,
-      'l1_ratio': 0.9,
+      'l1_ratio': 0.5,
       'max_iter': 2000,
       'solver': 'saga',
     },
     'KNN': {
-       'n_neighbors': 11,
+       'n_neighbors': 21,
        'weights': 'uniform',
-       'leaf_size': 500,
+       'leaf_size': 20,
        'p': 1,
     },
     'decision_tree': {
-      "max_depth": 15,
-      "min_samples_leaf": 10,
-      "min_samples_split": 20,
-      "splitter": "random",
+      'ccp_alpha': 0.001,
+      'class_weight': None,
+      'criterion': 'log_loss',
+      'max_depth': 10,
+      'max_features': None,
+      'min_samples_leaf': 5,
+      'min_samples_split': 20,
+      'splitter': 'random',
     },
     'random_forest': {
       'bootstrap': True,
@@ -100,8 +105,9 @@ config = {
       'device': 'auto',
     },
   },
-  'training_model': 'DNN',
-  'mode': 'cv',
+  'training_model': 'catboost',
+  'need_scaler': True,
+  'mode': 'submit', # train / fit / submit
   'logging': True,
   'rerun': False,
   'save_best_model': True,

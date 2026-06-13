@@ -42,12 +42,12 @@ class Trainer:
       'time_s': elapsed_s,
     }
   
-  def fit_full(self, name: str = '', params: dict | None = None):
+  def fit_full(self):
     data_loader = DataLoader(self.config)
     train_data = data_loader.load_train()
     X, y = data_loader.split_data(train_data)
     
-    pipeline = build_pipeline(self.config, name, params)
+    pipeline = build_pipeline(self.config)
     
     pipeline.fit(X, y)
     

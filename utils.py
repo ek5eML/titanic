@@ -4,10 +4,12 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 import numpy as np
 from omegaconf import DictConfig, OmegaConf
-import pandas as pd
 import torch
+from sklearn.base import BaseEstimator
+from joblib import dump, load
 
 
 def set_seed(seed: int):
@@ -142,3 +144,12 @@ def save_best_model_params(
     print(f'[{registry_name}] updated: {stored_score:.6f} -> {metric_value:.6f}')
   else:
     print(f'[{registry_name}] saved best score: {metric_value:.6f}')
+    
+def save_model(
+  model: BaseEstimator,
+  path_to_save: str,
+):
+  dump(model, path_to_save)
+  
+def load_model(path_to_load: str) -> BaseEstimator:
+  return load(path_to_load)

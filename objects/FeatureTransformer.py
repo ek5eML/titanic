@@ -81,6 +81,8 @@ class FeatureTransformer(BaseEstimator, TransformerMixin):
     df['Age'] = df['Age'].fillna(titles.map(AGE_BY_TITLE_DICT))
     
     df['Embarked'] = df['Embarked'].fillna('S')
+    
+    df['Fare'] = df['Fare'].fillna(df['Fare'].median())
 
     return df
       
