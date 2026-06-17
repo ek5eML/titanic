@@ -10,7 +10,7 @@ config = {
     'path_to_train_data': './data/train.csv',
     'path_to_test_data': './data/test.csv',
     'path_to_checkpoints': './checkpoints',
-    'path_to_logs': './logs/${general.experiment_name}',
+    'path_to_logs': './logs/${general.experiment_name}.txt',
     'path_to_submission': './submission.csv',
   },
   'data': {
@@ -21,7 +21,10 @@ config = {
     'n_splits': 5,
     'shuffle': True,
     'random_state': '${general.seed}',
-  }, 
+  },
+  'fit': {
+    'val_size': 0.15,
+  },
   'models_params': {
     'log_reg': {
       'C': 0.1,
@@ -95,22 +98,23 @@ config = {
       'scale_pos_weight': 1.6,
     },
     'DNN': {
-      'hidden_dims': [128, 64],
-      'dropout': 0.3,
+      'hidden_dims': [64, 32],
+      'dropout': 0.5,
       'lr': 0.001,
       'batch_size': 32,
       'num_epochs': 100,
-      'patience': 15,
+      'patience': 30,
       'weight_decay': 0.0001,
       'device': 'auto',
     },
   },
-  'training_model': 'catboost',
+  'training_model': 'DNN',
   'need_scaler': True,
-  'mode': 'submit', # train / fit / submit
+  'mode': 'train', # train / fit / submit
   'logging': True,
-  'rerun': False,
+  'rerun': True,
   'save_best_model': True,
+  'save_last_model': True,
   'metric': 'accuracy',
 }
 

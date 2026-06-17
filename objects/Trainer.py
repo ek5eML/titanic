@@ -1,54 +1,23 @@
-import time
-
-from sklearn.model_selection import cross_validate, StratifiedKFold
-
-from objects.pipeline_builder import build_pipeline
-from objects.DataLoader import DataLoader
 from objects.dnn.runner import DNNRunner
+from objects.sklearn.runner import SklearnRunner
 
+
+def get_runner(config):
+  if config.training_model == 'DNN':
+    return DNNRunner(config)
+
+  return SklearnRunner(config)
 
 class Trainer:
   def __init__(self, config):
     self.config = config
-    
+    self.runner = get_runner(config)
+
   def run_cv(self, name: str = '', params: dict | None = None):
-    if self.config.training_model == 'DNN':
-      return DNNRunner(self.config).run_cv()
+    return self.runner.run_cv(name, params)
 
-    data_loader = DataLoader(self.config)
-    train_data = data_loader.load_train()
-    X, y = data_loader.split_data(train_data)
-    
-    pipeline = build_pipeline(self.config, name, params)
-    
-    cv = StratifiedKFold(**self.config.cv)
+  def fit_full(self, name: str = '', params: dict | None = None):
+    return self.runner.fit_full(name, params)
 
-    start = time.perf_counter()
-    res = cross_validate(
-      pipeline,
-      X, y,
-      cv=cv,
-      scoring=self.config.metric,
-    )
-    elapsed_s = time.perf_counter() - start
-    model = pipeline.named_steps['model']
-
-    return {
-      'model_name': model.__class__.__name__,
-      'model_params': model.get_params(),
-      'metric': res['test_score'].mean(),
-      'metric_std': res['test_score'].std(),
-      'fold_metrics': res['test_score'].tolist(),
-      'time_s': elapsed_s,
-    }
-  
-  def fit_full(self):
-    data_loader = DataLoader(self.config)
-    train_data = data_loader.load_train()
-    X, y = data_loader.split_data(train_data)
-    
-    pipeline = build_pipeline(self.config)
-    
-    pipeline.fit(X, y)
-    
-    return pipeline
+  def predict(self, test_data):
+    return self.runner.predict(test_data)

@@ -39,16 +39,23 @@ def log_run(
   metric_value: float,
   metric_std: float,
   time_s: float,
+  with_header: bool = True,
 ):
   params = _normalize_params(model_params)
   timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-  log_file = Path('logs') / f'{config.general.experiment_name}.txt'
-  log_file.parent.mkdir(parents=True, exist_ok=True)
+  log_file = _log_file(config)
 
-  lines = [
-    '=' * 60,
-    timestamp,
-    '=' * 60,
+  lines = []
+  if with_header:
+    lines.extend([
+      '=' * 60,
+      timestamp,
+      '=' * 60,
+    ])
+  else:
+    lines.append('')
+
+  lines.extend([
     f'experiment : {config.general.experiment_name}',
     f'model      : {model_name}',
     f'metric     : {metric_name} = {metric_value:.6f}',
@@ -57,7 +64,7 @@ def log_run(
     '',
     *_format_params_block(params),
     '\n',
-  ]
+  ])
   block = '\n'.join(lines)
 
   with log_file.open('a', encoding='utf-8') as file:
@@ -65,6 +72,38 @@ def log_run(
 
   print(block)
   return log_file
+
+
+def _log_file(config) -> Path:
+  path = Path(str(config.paths.path_to_logs))
+  path.parent.mkdir(parents=True, exist_ok=True)
+  
+  return path
+
+
+def begin_log_section(config, title: str = '') -> Path:
+  timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+  lines = [
+    '=' * 60,
+    timestamp,
+    '=' * 60,
+  ]
+  if title:
+    lines.append(title)
+
+  block = '\n'.join(lines) + '\n'
+  print(block, end='')
+  log_file = _log_file(config)
+  with log_file.open('a', encoding='utf-8') as file:
+    file.write(block)
+
+  return log_file
+
+
+def log_message(config, message: str) -> None:
+  print(message)
+  with _log_file(config).open('a', encoding='utf-8') as file:
+    file.write(message + '\n')
 
 
 def _normalize_params(model_params) -> dict:
@@ -149,7 +188,9 @@ def save_model(
   model: BaseEstimator,
   path_to_save: str,
 ):
+  Path(path_to_save).parent.mkdir(parents=True, exist_ok=True)
   dump(model, path_to_save)
-  
+
+
 def load_model(path_to_load: str) -> BaseEstimator:
   return load(path_to_load)
