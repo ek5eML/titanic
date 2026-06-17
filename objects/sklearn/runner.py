@@ -102,6 +102,12 @@ class SklearnRunner:
     return pipeline
 
   def predict(self, test_data):
+    force_refit_models = {'xgboost', 'lightgbm'}
+
+    if self.config.rerun or self.config.training_model in force_refit_models:
+      pipeline = self.fit_full()
+      return pipeline.predict(test_data)
+
     path_to_model = (
       Path(str(self.config.paths.path_to_checkpoints))
       / f'{self.config.training_model}.joblib'

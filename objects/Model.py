@@ -9,7 +9,7 @@ from xgboost import XGBClassifier
 
 
 MODELS = {
-  'log_reg': lambda params: LogisticRegression(**params),
+  'regression': lambda params: LogisticRegression(**params),
   'KNN': lambda params: KNeighborsClassifier(**params),
   'decision_tree': lambda params: DecisionTreeClassifier(**params),
   'random_forest': lambda params: RandomForestClassifier(**params),

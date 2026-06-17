@@ -90,8 +90,10 @@ class FeatureTransformer(BaseEstimator, TransformerMixin):
     df['Embarked'] = df['Embarked'].replace(EMBARKED_DICT).astype('int64')
     df['Sex'] = (df['Sex'] == 'female').astype('int64')
     df = generate_continuous_feature(df, 'Age', 'AgeBin', AGE_BINS)
-    df = generate_continuous_feature(df, 'Fare', 'FareBin', FARE_BINS)
-    
+    df = generate_continuous_feature(df, 'Fare', 'FareBin', FARE_BINS)    
+    df['FamilySize'] = df['SibSp'] + df['Parch']
+    df['IsAlone'] = (df['FamilySize'] == 0).astype('int64')
+
     return df
     
   def fit(self, X: pd.DataFrame, y = None):
