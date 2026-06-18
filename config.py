@@ -23,7 +23,7 @@ config = {
     'random_state': '${general.seed}',
   },
   'fit': {
-    'val_size': 0.15,
+    'val_size': 0.01,
   },
   'models_params': {
     'regression': {
@@ -84,6 +84,9 @@ config = {
       'reg_alpha': 0.1,
       'reg_lambda': 5,
       'class_weight': 'balanced',
+      'n_jobs': 1,
+      'force_col_wise': True,
+      'verbose': -1,
     },
     'xgboost': {
       'n_estimators': 500,
@@ -108,11 +111,23 @@ config = {
       'weight_decay': 0.0001,
       'device': 'auto',
     },
+    'ensemble': {
+      'type': 'voting', # voting / stacking
+      'models': {
+        'regression': True,
+        'KNN': True,
+        'decision_tree': True,
+        'random_forest': True,
+        'catboost': True,
+        'lightgbm': True,
+        'xgboost': False,
+      },
+      'voting': 'soft',
+    },
   },
-  'model_type': 'classification',
-  'training_model': 'lightgbm',
+  'training_model': 'DNN',
   'need_scaler': True,
-  'mode': 'train', # train / fit / submit
+  'mode': 'submit', # train / fit / submit
   'logging': True,
   'rerun': False,
   'save_best_model': True,
