@@ -93,6 +93,7 @@ class DNNRunner:
       hidden_dims=list(params['hidden_dims']),
       dropout=params['dropout'],
       out_dim=self.config.general.num_classes,
+      batch_norm=params['batch_norm'],
     )
     best_val_accuracy, last_val_loss = fit_model(
       model,
@@ -164,6 +165,7 @@ class DNNRunner:
         hidden_dims=list(params['hidden_dims']),
         dropout=params['dropout'],
         out_dim=self.config.general.num_classes,
+        batch_norm=params['batch_norm'],
       )
       fold_accuracy, _ = fit_model(
         model,
@@ -223,6 +225,7 @@ class DNNRunner:
       hidden_dims=list(params['hidden_dims']),
       dropout=params['dropout'],
       out_dim=self.config.general.num_classes,
+      batch_norm=params['batch_norm'],
     )
     model.load_state_dict(checkpoint['model_state_dict'])
 

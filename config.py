@@ -2,7 +2,7 @@ from omegaconf import OmegaConf
 
 config = {
   'general': {
-    'experiment_name': 'family_size_and_alone',
+    'experiment_name': 'tunning DNN',
     'seed': 31415,
     'num_classes': 2,
   },
@@ -23,7 +23,7 @@ config = {
     'random_state': '${general.seed}',
   },
   'fit': {
-    'val_size': 0.01,
+    'val_size': 0.2,
   },
   'models_params': {
     'regression': {
@@ -103,13 +103,14 @@ config = {
     },
     'DNN': {
       'hidden_dims': [256, 128],
-      'dropout': 0.5,
+      'dropout': 0.3,
       'lr': 0.001,
-      'batch_size': 32,
+      'batch_size': 64,
       'num_epochs': 100,
       'patience': 30,
-      'weight_decay': 0.0001,
+      'weight_decay': 0.05,
       'device': 'auto',
+      'batch_norm': True,
     },
     'ensemble': {
       'type': 'voting', # voting / stacking
@@ -119,17 +120,17 @@ config = {
         'decision_tree': True,
         'random_forest': True,
         'catboost': True,
-        'lightgbm': True,
+        'lightgbm': False,
         'xgboost': False,
       },
       'voting': 'soft',
     },
   },
-  'training_model': 'DNN',
+  'training_model': 'random_forest',
   'need_scaler': True,
-  'mode': 'submit', # train / fit / submit
+  'mode': 'train', # train / fit / submit
   'logging': True,
-  'rerun': False,
+  'rerun': True,
   'save_best_model': True,
   'save_last_model': True,
   'metric': 'accuracy',
