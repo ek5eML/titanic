@@ -97,16 +97,9 @@ class FeatureTransformer(BaseEstimator, TransformerMixin):
     return df
     
   def fit(self, X: pd.DataFrame, y = None):
-    '''
-    Save some data for later use and return self.    
-    '''
-
     return self
 
   def transform(self, X):
-    '''
-    Transform the features.
-    '''
     df = X.copy()
     
     df = self._fill_missing(df)

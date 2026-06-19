@@ -1,3 +1,12 @@
+import subprocess
+import sys
+from pathlib import Path
+
+subprocess.run(
+  [sys.executable, '-m', 'pip', 'install', '-r', str(Path(__file__).parent / 'requirements.txt')],
+  check=False,
+)
+
 import pandas as pd
 
 from config import config

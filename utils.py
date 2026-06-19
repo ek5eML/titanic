@@ -13,9 +13,6 @@ from joblib import dump, load
 
 
 def set_seed(seed: int):
-  '''
-  Set the seed for the random number generators.
-  '''
   random.seed(seed)
   np.random.seed(seed)
   torch.manual_seed(seed)
@@ -149,9 +146,6 @@ def save_best_model_params(
   metric_value: float,
   metric_std: float,
 ):
-  '''
-  Save params to logs/{registry_name}.txt if metric_value beats the stored score.
-  '''
   log_file = Path('logs') / f'{registry_name}.txt'
   log_file.parent.mkdir(parents=True, exist_ok=True)
 
