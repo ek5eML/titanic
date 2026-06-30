@@ -3,8 +3,7 @@ import time
 import numpy as np
 import torch
 from omegaconf import OmegaConf
-from sklearn.model_selection import StratifiedKFold, train_test_split
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 
 from objects.DataLoader import DataLoader
 from objects.FeatureTransformer import FeatureTransformer
@@ -16,10 +15,19 @@ from objects.dnn.checkpoint import (
 from objects.dnn.dataset import make_dataloader
 from objects.dnn.model import DNN
 from objects.dnn.train_loop import _get_device, fit_model
-from utils import begin_log_section, log_run
+from utils import (
+  begin_log_section,
+  fit_scale,
+  get_cv_splitter,
+  get_scaler,
+  log_run,
+  transform_scale,
+)
 
 
 class DNNRunner:
+  """Train, cross-validate, and predict with the PyTorch DNN."""
+
   def __init__(self, config):
     self.config = config
 
@@ -35,18 +43,20 @@ class DNNRunner:
     self,
     X_train,
     X_val,
-  ) -> tuple[np.ndarray, np.ndarray, StandardScaler]:
+  ) -> tuple[np.ndarray, np.ndarray, object | None, FeatureTransformer]:
+    """Fit feature transformer and optionally scale train/val arrays."""
     feature_transformer = FeatureTransformer(self.config)
     X_train = feature_transformer.fit_transform(X_train)
     X_val = feature_transformer.transform(X_val)
 
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train.to_numpy(dtype=np.float32))
-    X_val = scaler.transform(X_val.to_numpy(dtype=np.float32))
+    scaler = get_scaler(self.config)
+    X_train = fit_scale(scaler, X_train)
+    X_val = transform_scale(scaler, X_val)
 
-    return X_train, X_val, scaler
+    return X_train, X_val, scaler, feature_transformer
 
   def fit_full(self, name = None, params: dict | None = None) -> dict:
+    """Train DNN on train/val split with early stopping and checkpointing."""
     params = self._get_params(params)
     start = time.perf_counter()
     last_checkpoint_path = get_last_checkpoint_path(self.config)
@@ -75,11 +85,11 @@ class DNNRunner:
       X,
       y,
       test_size=self.config.fit.val_size,
-      stratify=y,
       random_state=self.config.general.seed,
+      stratify=y if self.config.model_type == 'classification' else None,
     )
 
-    X_train, X_val, scaler = self._preprocess(X_train, X_val)
+    X_train, X_val, scaler, feature_transformer = self._preprocess(X_train, X_val)
 
     train_loader = make_dataloader(
       X_train, y_train, params['batch_size'], shuffle=True,
@@ -95,7 +105,7 @@ class DNNRunner:
       out_dim=self.config.general.num_classes,
       batch_norm=params['batch_norm'],
     )
-    best_val_accuracy, last_val_loss = fit_model(
+    best_val_metric, last_val_loss = fit_model(
       model,
       train_loader,
       val_loader,
@@ -106,6 +116,7 @@ class DNNRunner:
       device_name=params.get('device', 'auto'),
       config=self.config,
       scaler=scaler,
+      feature_transformer=feature_transformer,
       last_checkpoint_path=last_checkpoint_path,
       best_checkpoint_path=best_checkpoint_path,
       resume=resume,
@@ -119,7 +130,7 @@ class DNNRunner:
         model_name='DNN',
         model_params=params,
         metric_name=self.config.metric,
-        metric_value=best_val_accuracy,
+        metric_value=best_val_metric,
         metric_std=0.0,
         time_s=elapsed_s,
         with_header=False,
@@ -128,12 +139,14 @@ class DNNRunner:
     return {
       'model': model,
       'scaler': scaler,
+      'feature_transformer': feature_transformer,
       'model_params': params,
-      'best_val_accuracy': best_val_accuracy,
+      'best_val_metric': best_val_metric,
       'last_val_loss': last_val_loss,
     }
 
   def run_cv(self, name: str = '', params: dict | None = None) -> dict:
+    """Run manual CV by retraining the DNN on each fold."""
     params = self._get_params(params)
     data_loader = DataLoader(self.config)
     train_data = data_loader.load_train()
@@ -143,7 +156,7 @@ class DNNRunner:
     if self.config.logging:
       begin_log_section(self.config)
 
-    cv = StratifiedKFold(**self.config.cv)
+    cv = get_cv_splitter(self.config)
     fold_metrics: list[float] = []
 
     start = time.perf_counter()
@@ -151,7 +164,7 @@ class DNNRunner:
       X_train, X_val = X.iloc[train_idx], X.iloc[val_idx]
       y_train, y_val = y[train_idx], y[val_idx]
 
-      X_train, X_val, _ = self._preprocess(X_train, X_val)
+      X_train, X_val, _, _ = self._preprocess(X_train, X_val)
 
       train_loader = make_dataloader(
         X_train, y_train, params['batch_size'], shuffle=True,
@@ -167,7 +180,7 @@ class DNNRunner:
         out_dim=self.config.general.num_classes,
         batch_norm=params['batch_norm'],
       )
-      fold_accuracy, _ = fit_model(
+      fold_metric, _ = fit_model(
         model,
         train_loader,
         val_loader,
@@ -179,7 +192,7 @@ class DNNRunner:
         config=self.config,
         fold=fold_idx,
       )
-      fold_metrics.append(fold_accuracy)
+      fold_metrics.append(fold_metric)
 
     elapsed_s = time.perf_counter() - start
     fold_metrics_arr = np.array(fold_metrics)
@@ -208,6 +221,7 @@ class DNNRunner:
     return result
 
   def predict(self, test_data) -> np.ndarray:
+    """Load best DNN checkpoint and predict on preprocessed test features."""
     checkpoint_path = get_best_checkpoint_path(self.config)
     if not checkpoint_path.exists():
       raise FileNotFoundError(f'DNN checkpoint not found: {checkpoint_path}')
@@ -215,10 +229,15 @@ class DNNRunner:
     checkpoint = load_training_checkpoint(checkpoint_path)
     params = self._get_params()
     scaler = checkpoint['scaler']
+    feature_transformer = checkpoint.get('feature_transformer')
+    if feature_transformer is None:
+      raise ValueError(
+        'DNN checkpoint is missing feature_transformer. '
+        'Re-run fit with rerun=True before submit.'
+      )
 
-    feature_transformer = FeatureTransformer(self.config)
     X = feature_transformer.transform(test_data)
-    X = scaler.transform(X.to_numpy(dtype=np.float32))
+    X = transform_scale(scaler, X)
 
     model = DNN(
       n_features=X.shape[1],

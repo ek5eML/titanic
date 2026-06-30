@@ -1,18 +1,28 @@
 import time
 from pathlib import Path
 
-from sklearn.model_selection import StratifiedKFold, cross_validate, train_test_split
+from sklearn.model_selection import cross_validate, train_test_split
+from sklearn.metrics import get_scorer
 
 from objects.DataLoader import DataLoader
 from objects.pipeline_builder import build_pipeline
-from utils import begin_log_section, log_run, load_model, save_model
+from utils import (
+  begin_log_section,
+  get_cv_splitter,
+  log_run,
+  load_model,
+  save_model,
+)
 
 
 class SklearnRunner:
+  """Train and evaluate sklearn pipelines built from config."""
+
   def __init__(self, config):
     self.config = config
 
   def run_cv(self, name: str = '', params: dict | None = None) -> dict:
+    """Run KFold CV on the full training set and return aggregated metrics."""
     if self.config.logging:
       begin_log_section(self.config)
 
@@ -21,7 +31,7 @@ class SklearnRunner:
     X, y = data_loader.split_data(train_data)
 
     pipeline = build_pipeline(self.config, name, params)
-    cv = StratifiedKFold(**self.config.cv)
+    cv = get_cv_splitter(self.config)
 
     start = time.perf_counter()
     res = cross_validate(
@@ -57,6 +67,7 @@ class SklearnRunner:
     return result
 
   def fit_full(self, name: str = '', params: dict | None = None):
+    """Fit pipeline on train split, evaluate on val, and save checkpoint."""
     start = time.perf_counter()
 
     if self.config.logging:
@@ -70,13 +81,13 @@ class SklearnRunner:
       X,
       y,
       test_size=self.config.fit.val_size,
-      stratify=y,
       random_state=self.config.general.seed,
+      stratify=y if self.config.model_type == 'classification' else None,
     )
 
     pipeline = build_pipeline(self.config, name, params)
     pipeline.fit(X_train, y_train)
-    val_metric = pipeline.score(X_val, y_val)
+    val_metric = float(get_scorer(self.config.metric)(pipeline, X_val, y_val))
 
     elapsed_s = time.perf_counter() - start
     model = pipeline.named_steps['model']
@@ -102,10 +113,10 @@ class SklearnRunner:
     return pipeline
 
   def predict(self, test_data):
-    force_refit_models = {'xgboost', 'lightgbm', 'ensemble'}
-
-    if self.config.rerun or self.config.training_model in force_refit_models:
+    """Load saved pipeline or refit when rerun=True, then predict on test data."""
+    if self.config.rerun:
       pipeline = self.fit_full()
+
       return pipeline.predict(test_data)
 
     path_to_model = (
@@ -114,4 +125,5 @@ class SklearnRunner:
     )
 
     pipeline = load_model(str(path_to_model))
+
     return pipeline.predict(test_data)

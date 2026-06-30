@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import get_scorer
 from torch.utils.data import DataLoader
 
 from objects.dnn.checkpoint import (
@@ -21,11 +23,11 @@ def _get_device(device_name: str) -> torch.device:
   return torch.device('cpu')
 
 
-def _get_preds(logits: torch.Tensor) -> torch.Tensor:
-  if logits.ndim == 1:
-    return (torch.sigmoid(logits) >= 0.5).long()
+def _get_predictions(outputs: torch.Tensor) -> torch.Tensor:
+  if outputs.ndim == 1 or outputs.shape[-1] == 1:
+    return (torch.sigmoid(outputs) >= 0.5).long()
 
-  return logits.argmax(dim=-1)
+  return outputs.argmax(dim=-1)
 
 
 def train_epoch(
@@ -35,6 +37,7 @@ def train_epoch(
   optimizer: torch.optim.Optimizer,
   device: torch.device,
 ) -> float:
+  """Run one training epoch and return average batch loss."""
   model.train()
   total_loss = 0.0
 
@@ -58,25 +61,34 @@ def evaluate(
   dataloader: DataLoader,
   criterion: nn.Module,
   device: torch.device,
+  metric_name: str,
 ) -> tuple[float, float]:
+  """Evaluate model on a dataloader and return loss plus sklearn metric."""
   model.eval()
   total_loss = 0.0
-  correct = 0
+  all_preds: list[np.ndarray] = []
+  all_targets: list[np.ndarray] = []
 
   for batch_x, batch_y in dataloader:
     batch_x = batch_x.to(device)
     batch_y = batch_y.to(device)
-    logits = model(batch_x)
-    loss = criterion(logits, batch_y)
+    outputs = model(batch_x)
+    loss = criterion(outputs, batch_y)
     total_loss += loss.item() * len(batch_x)
-    preds = _get_preds(logits)
-    correct += (preds == batch_y).sum().item()
+    preds = _get_predictions(outputs)
+    all_preds.append(preds.detach().cpu().numpy())
+    all_targets.append(batch_y.detach().cpu().numpy())
 
   dataset_size = len(dataloader.dataset)
   avg_loss = total_loss / dataset_size
-  accuracy = correct / dataset_size
+  y_true = np.concatenate(all_targets)
+  y_pred = np.concatenate(all_preds)
+  scorer = get_scorer(metric_name)
+  val_metric = float(
+    scorer._sign * scorer._score_func(y_true, y_pred, **scorer._kwargs)
+  )
 
-  return avg_loss, accuracy
+  return avg_loss, val_metric
 
 
 def _get_lr(optimizer: torch.optim.Optimizer) -> float:
@@ -89,13 +101,14 @@ def _build_checkpoint_state(
   model: nn.Module,
   optimizer: torch.optim.Optimizer,
   scheduler: torch.optim.lr_scheduler.LRScheduler | None,
-  best_val_accuracy: float,
+  best_val_metric: float,
   best_val_loss: float,
   best_model_state: dict | None,
   last_val_loss: float,
   epochs_without_improvement: int,
   history: dict,
   scaler=None,
+  feature_transformer=None,
   model_state_dict: dict | None = None,
 ) -> dict:
   return {
@@ -109,13 +122,14 @@ def _build_checkpoint_state(
     'scheduler_state_dict': (
       scheduler.state_dict() if scheduler is not None else None
     ),
-    'best_val_accuracy': best_val_accuracy,
+    'best_val_metric': best_val_metric,
     'best_val_loss': best_val_loss,
     'best_model_state_dict': best_model_state,
     'last_val_loss': last_val_loss,
     'epochs_without_improvement': epochs_without_improvement,
     'history': history,
     'scaler': scaler,
+    'feature_transformer': feature_transformer,
   }
 
 
@@ -125,6 +139,7 @@ def _restore_training_state(
   optimizer: torch.optim.Optimizer,
   scheduler: torch.optim.lr_scheduler.LRScheduler | None,
 ) -> dict:
+  """Restore model, optimizer, scheduler, and counters from a checkpoint."""
   model.load_state_dict(checkpoint['model_state_dict'])
   optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
@@ -136,7 +151,12 @@ def _restore_training_state(
 
   return {
     'start_epoch': int(checkpoint['epoch']) + 1,
-    'best_val_accuracy': float(checkpoint['best_val_accuracy']),
+    'best_val_metric': float(
+      checkpoint.get(
+        'best_val_metric',
+        checkpoint.get('best_val_accuracy', float('-inf')),
+      )
+    ),
     'best_val_loss': float(checkpoint.get('best_val_loss', float('inf'))),
     'best_model_state': checkpoint.get('best_model_state_dict'),
     'last_val_loss': float(checkpoint['last_val_loss']),
@@ -144,10 +164,11 @@ def _restore_training_state(
     'history': checkpoint.get('history', {
       'train_loss': [],
       'val_loss': [],
-      'val_accuracy': [],
+      'val_metric': [],
       'lr': [],
     }),
     'scaler': checkpoint.get('scaler'),
+    'feature_transformer': checkpoint.get('feature_transformer'),
   }
 
 
@@ -164,6 +185,7 @@ def fit_model(
   config=None,
   fold: int | None = None,
   scaler=None,
+  feature_transformer=None,
   last_checkpoint_path: Path | None = None,
   best_checkpoint_path: Path | None = None,
   resume: bool = False,
@@ -179,7 +201,8 @@ def fit_model(
     patience=5,
   )
 
-  best_accuracy = 0.0
+  metric_name = config.metric
+  best_val_metric = float('-inf')
   best_val_loss = float('inf')
   best_state = None
   epochs_without_improvement = 0
@@ -188,7 +211,7 @@ def fit_model(
   history = {
     'train_loss': [],
     'val_loss': [],
-    'val_accuracy': [],
+    'val_metric': [],
     'lr': [],
   }
 
@@ -205,7 +228,7 @@ def fit_model(
     checkpoint = load_training_checkpoint(last_checkpoint_path)
     restored = _restore_training_state(checkpoint, model, optimizer, scheduler)
     start_epoch = restored['start_epoch']
-    best_accuracy = restored['best_val_accuracy']
+    best_val_metric = restored['best_val_metric']
     best_val_loss = restored['best_val_loss']
     best_state = restored['best_model_state']
     last_val_loss = restored['last_val_loss']
@@ -214,13 +237,15 @@ def fit_model(
     history.setdefault('lr', [])
     if scaler is None:
       scaler = restored['scaler']
+    if feature_transformer is None:
+      feature_transformer = restored['feature_transformer']
 
     if should_log:
       log_message(
         config,
         (
           f'{fold_prefix}resumed from epoch {start_epoch} | '
-          f'best_val_acc={best_accuracy:.6f}'
+          f'best_val_{metric_name}={best_val_metric:.6f}'
         ),
       )
   elif should_log:
@@ -231,11 +256,17 @@ def fit_model(
 
   for epoch in range(start_epoch, num_epochs + 1):
     train_loss = train_epoch(model, train_loader, criterion, optimizer, device)
-    last_val_loss, val_accuracy = evaluate(model, val_loader, criterion, device)
+    last_val_loss, val_metric = evaluate(
+      model,
+      val_loader,
+      criterion,
+      device,
+      metric_name,
+    )
 
     history['train_loss'].append(train_loss)
     history['val_loss'].append(last_val_loss)
-    history['val_accuracy'].append(val_accuracy)
+    history['val_metric'].append(val_metric)
 
     scheduler.step(last_val_loss)
     current_lr = _get_lr(optimizer)
@@ -248,13 +279,13 @@ def fit_model(
           f'{fold_prefix}epoch {epoch:3d} | '
           f'train_loss={train_loss:.6f} | '
           f'val_loss={last_val_loss:.6f} | '
-          f'val_acc={val_accuracy:.6f} | '
+          f'val_{metric_name}={val_metric:.6f} | '
           f'lr={current_lr:.6f}'
         ),
       )
 
-    if val_accuracy > best_accuracy:
-      best_accuracy = val_accuracy
+    if val_metric > best_val_metric:
+      best_val_metric = val_metric
       best_val_loss = last_val_loss
       best_state = {
         key: value.detach().cpu().clone()
@@ -268,13 +299,14 @@ def fit_model(
           model=model,
           optimizer=optimizer,
           scheduler=scheduler,
-          best_val_accuracy=best_accuracy,
+          best_val_metric=best_val_metric,
           best_val_loss=best_val_loss,
           best_model_state=best_state,
           last_val_loss=last_val_loss,
           epochs_without_improvement=epochs_without_improvement,
           history=history,
           scaler=scaler,
+          feature_transformer=feature_transformer,
           model_state_dict=best_state,
         )
         save_training_checkpoint(best_checkpoint_path, checkpoint_state)
@@ -289,13 +321,14 @@ def fit_model(
           model=model,
           optimizer=optimizer,
           scheduler=scheduler,
-          best_val_accuracy=best_accuracy,
+          best_val_metric=best_val_metric,
           best_val_loss=best_val_loss,
           best_model_state=best_state,
           last_val_loss=last_val_loss,
           epochs_without_improvement=epochs_without_improvement,
           history=history,
           scaler=scaler,
+          feature_transformer=feature_transformer,
         ),
       )
 
@@ -305,7 +338,7 @@ def fit_model(
           config,
           (
             f'{fold_prefix}early stopping at epoch {epoch} | '
-            f'best_val_acc={best_accuracy:.6f}'
+            f'best_val_{metric_name}={best_val_metric:.6f}'
           ),
         )
       break
@@ -318,10 +351,10 @@ def fit_model(
       config,
       (
         f'{fold_prefix}training finished | '
-        f'best_val_acc={best_accuracy:.6f} | '
+        f'best_val_{metric_name}={best_val_metric:.6f} | '
         f'best_val_loss={best_val_loss:.6f} | '
         f'last_val_loss={last_val_loss:.6f}'
       ),
     )
 
-  return best_accuracy, last_val_loss
+  return best_val_metric, last_val_loss

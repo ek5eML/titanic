@@ -1,13 +1,14 @@
-# House Prices
+# Titanic
+
+Kaggle [Titanic](https://www.kaggle.com/competitions/titanic) project with a reproducible training pipeline.
 
 ## Setup
 
-Create a virtual environment and install dependencies from `requirements.txt`:
+Recommended: create and activate a virtual environment:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
 Place Kaggle data files in the `data/` directory:
@@ -23,33 +24,42 @@ Run the pipeline:
 python main.py
 ```
 
-Configure the model and run mode in `config.py` (`training_model`, `mode`).
+On startup, `main.py` quietly installs missing dependencies from `requirements.txt`.
+
+Configure the run in `config.py`:
+
+- `mode` — `train` or `fit`
+- `training_model` — model name for `train` mode
+- `models_to_evaluate` — list of models for `fit` mode
+- `model_type` — `regression` or `classification`
+- `need_scaler` — apply `StandardScaler` to features (sklearn and DNN)
+- `models_params` — hyperparameters per model
+
+EDA and experiments: `research.ipynb`.
 
 ## Workflow
 
-Set the run mode in `config.py` via `mode`. Choose the model via `training_model`.
+### `train` — cross-validation for one model
 
-### `train` — cross-validation
+- Set `mode: train` and choose a model via `training_model`.
+- Runs **StratifiedKFold CV** for classification or **KFold CV** for regression (5 folds by default) on the full training set.
+- Writes metrics to `logs/{experiment_name}.txt`.
+- If `save_best_model: True`, updates `logs/{model}.txt` when CV score improves.
 
-- Loads the training set and runs **StratifiedKFold CV** (5 folds by default) on **all** training data.
-- Computes the mean metric and std across folds, and writes the result to `logs/{experiment_name}.txt`.
-- If `save_best_model: True`, updates `logs/{model}.txt` with the best parameters (when the CV score improves).
+Checkpoints are not saved in this mode.
 
-The model is **not** saved to checkpoints in this mode.
+### `fit` — full pipeline (CV → best model → submission)
 
-### `fit` — training and saving
+Default mode. One command runs the entire flow:
 
-- Loads the training set and splits it into **train/val** (`val_size: 0.2`, i.e. 80% / 20%) — **not on the full dataset**.
-- Trains the pipeline on the train split, evaluates the metric on val, and logs to `logs/{experiment_name}.txt`.
-- Saves the trained pipeline to `checkpoints/{training_model}.joblib`.
+1. **CV** for every model in `models_to_evaluate`
+2. Optional update of `logs/{model}.txt` when `save_best_model: True`
+3. Selection of the best model by CV metric
+4. Retrain on part of train (`fit.val_size: 0.2` — 20% for validation)
+5. `submission.csv` — predictions on test
+6. `result.md` — CV summary table (**Model**, **CV**, **CV STD**)
 
-### `submit` — test prediction
-
-- Loads the test set.
-- Loads the saved model from `checkpoints/{training_model}.joblib` and runs `predict`.
-- Writes the output to `submission.csv`.
-
-Exception: for `xgboost`, `lightgbm`, `ensemble`, or when `rerun: True`, the model is **retrained** via `fit` before prediction (instead of loading from checkpoint).
+Supported models: `regression`, `ridge`, `lasso`, `elasticnet`, `KNN`, `decision_tree`, `random_forest`, `catboost`, `lightgbm`, `xgboost`, `voting`, `stacking`, `DNN`.
 
 ## Results
 
@@ -64,6 +74,3 @@ Exception: for `xgboost`, `lightgbm`, `ensemble`, or when `rerun: True`, the mod
 | Ensemble              | 0.831599 | 0.024614 | 0.76315 | 2026-06-18 |
 | full lightgbm         | 0.830481 | 0.027137 | 0.76076 | 2026-06-19 |
 | KNN                   | 0.825975 | 0.033365 | 0.74401 | 2026-06-17 |
-
-
-

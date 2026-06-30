@@ -2,7 +2,7 @@ from omegaconf import OmegaConf
 
 config = {
   'general': {
-    'experiment_name': 'tunning DNN',
+    'experiment_name': 'pipeline rework',
     'seed': 31415,
     'num_classes': 2,
   },
@@ -12,6 +12,7 @@ config = {
     'path_to_checkpoints': './checkpoints',
     'path_to_logs': './logs/${general.experiment_name}.txt',
     'path_to_submission': './submission.csv',
+    'path_to_results': './result.md',
   },
   'data': {
     'target_col': 'Survived',
@@ -33,11 +34,32 @@ config = {
       'max_iter': 2000,
       'solver': 'saga',
     },
+    'ridge': {
+      'alpha': 1.0,
+      'class_weight': None,
+      'max_iter': 2000,
+      'solver': 'auto',
+    },
+    'lasso': {
+      'C': 0.1,
+      'class_weight': None,
+      'max_iter': 2000,
+      'penalty': 'l1',
+      'solver': 'liblinear',
+    },
+    'elasticnet': {
+      'C': 0.1,
+      'class_weight': None,
+      'l1_ratio': 0.5,
+      'max_iter': 2000,
+      'penalty': 'elasticnet',
+      'solver': 'saga',
+    },
     'KNN': {
-       'n_neighbors': 11,
-       'weights': 'uniform',
-       'leaf_size': 50,
-       'p': 1,
+      'n_neighbors': 11,
+      'weights': 'uniform',
+      'leaf_size': 50,
+      'p': 1,
     },
     'decision_tree': {
       'ccp_alpha': 0.001,
@@ -101,6 +123,35 @@ config = {
       'scale_pos_weight': 1,
       'n_jobs': 1,
     },
+    'voting': {
+      'voting': 'soft',
+      'models': {
+        'regression': 0,
+        'ridge': 0,
+        'lasso': 0,
+        'elasticnet': 0,
+        'KNN': 1,
+        'decision_tree': 0,
+        'random_forest': 1,
+        'catboost': 2,
+        'lightgbm': 1,
+        'xgboost': 1,
+      },
+    },
+    'stacking': {
+      'models': {
+        'regression': 0,
+        'ridge': 0,
+        'lasso': 0,
+        'elasticnet': 0,
+        'KNN': 1,
+        'decision_tree': 0,
+        'random_forest': 1,
+        'catboost': 2,
+        'lightgbm': 1,
+        'xgboost': 1,
+      },
+    },
     'DNN': {
       'hidden_dims': [256, 128],
       'dropout': 0.3,
@@ -112,28 +163,32 @@ config = {
       'device': 'auto',
       'batch_norm': True,
     },
-    'ensemble': {
-      'type': 'voting', # voting / stacking
-      'models': {
-        'regression': True,
-        'KNN': True,
-        'decision_tree': True,
-        'random_forest': True,
-        'catboost': True,
-        'lightgbm': False,
-        'xgboost': False,
-      },
-      'voting': 'soft',
-    },
   },
-  'training_model': 'random_forest',
+  'models_to_evaluate': [
+    'regression',
+    'ridge',
+    'lasso',
+    'elasticnet',
+    'KNN',
+    'decision_tree',
+    'random_forest',
+    'catboost',
+    'lightgbm',
+    'xgboost',
+    'voting',
+    'stacking',
+    'DNN',
+  ],
+  'training_model': 'voting',
   'need_scaler': True,
-  'mode': 'train', # train / fit / submit
-  'logging': True,
+  'mode': 'fit',
   'rerun': True,
+  'logging': True,
   'save_best_model': True,
   'save_last_model': True,
+  'model_type': 'classification',
   'metric': 'accuracy',
+  'is_negative_metric': False,
 }
 
 config = OmegaConf.create(config)
